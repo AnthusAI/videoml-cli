@@ -1,17 +1,18 @@
-#!/usr/bin/env tsx
-
 import { Command } from "commander";
 import { existsSync, statSync, readdirSync } from "fs";
 import { dirname, join, resolve, sep } from "path";
 import chokidar from "chokidar";
-import type { CompositionSpec } from "../../../src/dsl/types.js";
-import { loadVideoFile } from "../../../src/dsl/load.js";
-import { generateComposition } from "../../../src/generate.js";
-import { loadConfig, findProjectRoot } from "../../../src/config.js";
-import { BabulusError } from "../../../src/errors.js";
-import { renderVideoFromScript } from "../../../packages/renderer/src/video-render.js";
-import type { ScriptData } from "../../../packages/shared/src/video.js";
-import type { TimelineData } from "../../../packages/shared/src/timeline.js";
+import {
+  BabulusError,
+  findProjectRoot,
+  generateComposition,
+  loadConfig,
+  loadVideoFile,
+  renderVideoFromScript,
+  type CompositionSpec,
+  type ScriptData,
+  type TimelineData,
+} from "@videoml/toolchain";
 import { readFileSync } from "fs";
 
 const program = new Command();
