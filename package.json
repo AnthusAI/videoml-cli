@@ -1,6 +1,6 @@
 {
   "name": "@videoml/cli",
-  "version": "0.0.0-semantic-release",
+  "version": "1.0.0",
   "description": "VideoML CLI (vml): generate timing/audio and render MP4s from VML content.",
   "license": "MIT",
   "type": "module",
