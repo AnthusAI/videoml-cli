@@ -25,9 +25,10 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@videoml/toolchain": "0.0.0-semantic-release",
+    "@videoml/toolchain": "file:../toolchain",
     "chokidar": "^3.6.0",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "gsap": "^3.14.2"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
