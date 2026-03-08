@@ -11,3 +11,9 @@ dist/
 # OS
 .DS_Store
 
+
+# Claude / agent tooling
+.claude/
+
+# Kanbus project data
+project/
