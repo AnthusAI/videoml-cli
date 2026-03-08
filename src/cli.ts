@@ -23,6 +23,7 @@ program
   .argument("[dsl]", "Path to .babulus.ts or .babulus.xml file or directory")
   .option("--script-out <path>", "Output script JSON path")
   .option("--timeline-out <path>", "Output timeline JSON path")
+  .option("--timing-out <path>", "Output timing overlay XML path")
   .option("--audio-out <path>", "Output audio path")
   .option("--out-dir <path>", "Intermediate output dir")
   .option("--usage-out <path>", "Usage ledger output path")
@@ -47,13 +48,13 @@ program
     const projectDir = opts.projectDir ? resolve(cwd, opts.projectDir) : undefined;
 
     const dslPaths = resolveDslPaths(dslArg, cwd);
-    if (opts.watch && (opts.scriptOut || opts.timelineOut || opts.audioOut || opts.outDir || opts.usageOut) && dslPaths.length !== 1) {
+    if (opts.watch && (opts.scriptOut || opts.timelineOut || opts.timingOut || opts.audioOut || opts.outDir || opts.usageOut) && dslPaths.length !== 1) {
       throw new BabulusError("When using --watch with multiple DSLs, omit explicit output overrides.");
     }
 
     const runs = await loadCompositions(dslPaths);
     const totalComps = runs.reduce((sum, r) => sum + r.compositions.length, 0);
-    if ((opts.scriptOut || opts.timelineOut || opts.audioOut || opts.outDir || opts.usageOut) && totalComps !== 1) {
+    if ((opts.scriptOut || opts.timelineOut || opts.timingOut || opts.audioOut || opts.outDir || opts.usageOut) && totalComps !== 1) {
       throw new BabulusError("Output overrides require a single composition.");
     }
 
@@ -65,7 +66,7 @@ program
           continue;
         }
         for (const comp of run.compositions) {
-          const { scriptOut, timelineOut, audioOut, outDir } = defaultsForComposition(comp.id, run.path, projectDir, opts);
+          const { scriptOut, timelineOut, timingOut, audioOut, outDir } = defaultsForComposition(comp.id, run.path, projectDir, opts);
           const logger = opts.quiet ? undefined : (msg: string) => {
             const ts = new Date().toLocaleTimeString();
             console.error(`[${ts}] ${comp.id}: ${msg}`);
@@ -75,6 +76,7 @@ program
             dslPath: run.path,
             scriptOut,
             timelineOut,
+            timingOut,
             audioOut,
             outDir,
             config,
@@ -146,7 +148,14 @@ program
       }
 
       const isInDslDir = dslDirs.some(dir => absChanged.startsWith(dir + sep));
-      if (isInDslDir && (absChanged.endsWith(".ts") || absChanged.endsWith(".xml"))) {
+      if (
+        isInDslDir &&
+        (absChanged.endsWith(".ts") ||
+          absChanged.endsWith(".xml") ||
+          absChanged.endsWith(".vml") ||
+          absChanged.endsWith(".videoml") ||
+          absChanged.endsWith(".video-ml"))
+      ) {
         console.error(`\nCHANGE DETECTED (Shared): ${rel}`);
         console.error("Shared file changed; regenerating all compositions...");
         await runOnce();
@@ -170,7 +179,12 @@ program
   .option("--pattern <pattern>", "Frame filename pattern", "frame-%06d.png")
   .option("--scale <number>", "Device scale factor", (value) => Number(value), 1)
   .option("--workers <number>", "Parallel frame workers (set 1 to disable)", (value) => Number(value))
-  .option("--browser-bundle <path>", "Path to browser bundle (defaults to BABULUS_BROWSER_BUNDLE or public/browser-components.js)")
+  .option(
+    "--browser-bundle <path>",
+    "Path to browser bundle (repeat for multiple bundles; loaded in order)",
+    (value: string, previous: string[]) => [...previous, value],
+    [],
+  )
   .option(
     "--ffmpeg-arg <arg>",
     "Extra ffmpeg argument (repeat for multiple)",
@@ -201,7 +215,9 @@ program
     const startFrame = opts.start == null ? undefined : Number(opts.start);
     const workers = opts.workers == null ? undefined : Number(opts.workers);
     const scale = opts.scale == null ? undefined : Number(opts.scale);
-    const browserBundlePath = opts.browserBundle ? resolve(process.cwd(), opts.browserBundle) : undefined;
+    const browserBundlePaths = Array.isArray(opts.browserBundle) && opts.browserBundle.length
+      ? opts.browserBundle.map((bundle: string) => resolve(process.cwd(), bundle))
+      : undefined;
 
     await renderVideoFromScript({
       script,
@@ -217,7 +233,8 @@ program
       endFrame,
       deviceScaleFactor: scale,
       workers,
-      browserBundlePath,
+      browserBundlePath: undefined,
+      browserBundlePaths,
       ffmpegPath: opts.ffmpeg,
       ffmpegArgs: opts.ffmpegArg,
       fps,
@@ -235,6 +252,12 @@ program
   .option("--out <path>", "Output MP4 path")
   .option("--frames <dir>", "Output directory for PNG frames")
   .option("--project-dir <path>", "Project root directory (prefix for outputs)")
+  .option(
+    "--browser-bundle <path>",
+    "Path to browser bundle (repeat for multiple bundles; loaded in order)",
+    (value: string, previous: string[]) => [...previous, value],
+    [],
+  )
   .action(async (dslArg: string | undefined, opts) => {
     const cwd = process.cwd();
     const projectDir = opts.projectDir ? resolve(cwd, opts.projectDir) : undefined;
@@ -250,7 +273,7 @@ program
     }
 
     const comp = spec.compositions[0];
-    const { scriptOut, timelineOut, audioOut, outDir } = defaultsForComposition(comp.id, dslPath, projectDir, {});
+    const { scriptOut, timelineOut, timingOut, audioOut, outDir } = defaultsForComposition(comp.id, dslPath, projectDir, {});
     const config = loadConfig(projectDir, dslPath);
 
     await generateComposition({
@@ -258,6 +281,7 @@ program
       dslPath,
       scriptOut,
       timelineOut,
+      timingOut,
       audioOut,
       outDir,
       config,
@@ -275,6 +299,10 @@ program
     const script = JSON.parse(readFileSync(scriptOut, "utf8")) as ScriptData;
     const timeline = JSON.parse(readFileSync(timelineOut, "utf8")) as TimelineData;
 
+    const browserBundlePaths = Array.isArray(opts.browserBundle) && opts.browserBundle.length
+      ? opts.browserBundle.map((bundle: string) => resolve(cwd, bundle))
+      : undefined;
+
     await renderVideoFromScript({
       script,
       timeline,
@@ -287,6 +315,7 @@ program
       deviceScaleFactor: 1,
       workers: undefined,
       browserBundlePath: undefined,
+      browserBundlePaths,
       ffmpegPath: "ffmpeg",
       ffmpegArgs: [],
       fps: undefined,
@@ -321,10 +350,14 @@ function resolveDslPaths(dslArg: string | undefined, cwd: string): string[] {
   }
   const auto = discoverProjectDsls(cwd);
   if (auto.length === 0) {
-    throw new BabulusError("No .babulus.ts or .babulus.xml files found. Pass a file or directory path, or create one under ./content/");
+    throw new BabulusError(
+      "No .babulus.ts, .babulus.xml, or .vml files found. Pass a file or directory path, or create one under ./content/",
+    );
   }
   if (auto.length > 1) {
-    throw new BabulusError(`Multiple .babulus.ts/.babulus.xml files found (${auto.length}). Pass a specific file or directory path.`);
+    throw new BabulusError(
+      `Multiple .babulus.ts/.babulus.xml/.vml files found (${auto.length}). Pass a specific file or directory path.`,
+    );
   }
   return [auto[0]];
 }
@@ -348,7 +381,14 @@ function findDslFiles(root: string, recursive = true): string[] {
       }
       continue;
     }
-    if (entry.isFile() && (entry.name.endsWith(".babulus.ts") || entry.name.endsWith(".babulus.xml"))) {
+    if (
+      entry.isFile() &&
+      (entry.name.endsWith(".babulus.ts") ||
+        entry.name.endsWith(".babulus.xml") ||
+        entry.name.endsWith(".vml") ||
+        entry.name.endsWith(".videoml") ||
+        entry.name.endsWith(".video-ml"))
+    ) {
       out.push(full);
     }
   }
@@ -369,7 +409,7 @@ function defaultsForComposition(
   dslPath: string,
   projectDir: string | undefined,
   opts: Record<string, unknown>,
-): { scriptOut: string; timelineOut: string; audioOut: string; outDir: string } {
+): { scriptOut: string; timelineOut: string; timingOut: string; audioOut: string; outDir: string } {
   const root = projectDir ?? findProjectRoot(dslPath);
   const scriptOut = typeof opts.scriptOut === "string"
     ? String(opts.scriptOut)
@@ -377,13 +417,16 @@ function defaultsForComposition(
   const timelineOut = typeof opts.timelineOut === "string"
     ? String(opts.timelineOut)
     : join(root, `src/videos/${compId}/${compId}.timeline.json`);
+  const timingOut = typeof opts.timingOut === "string"
+    ? String(opts.timingOut)
+    : join(root, `src/videos/${compId}/${compId}.timing.xml`);
   const audioOut = typeof opts.audioOut === "string"
     ? String(opts.audioOut)
     : join(root, `public/videoml/${compId}.wav`);
   const outDir = typeof opts.outDir === "string"
     ? String(opts.outDir)
     : join(root, `.videoml/out/${compId}`);
-  return { scriptOut, timelineOut, audioOut, outDir };
+  return { scriptOut, timelineOut, timingOut, audioOut, outDir };
 }
 
 function publicRoot(projectDir?: string): string {
